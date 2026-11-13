@@ -1,0 +1,4 @@
+Source: https://github.com/openwrt/packages/tree/openwrt-25.12/net/openssh
+Branch: openwrt-25.12
+Commit: f1accc83d2a0cfd21d2ae1c14778096afb423d12 (openssh: update to 10.6_p2)
+Local changes: none
