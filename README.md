@@ -27,8 +27,70 @@ How:
   The SDK download is checked against the release's `sha256sums`.
 - Each `.ipk` is relabelled with GL's architecture string, so plain
   `opkg install` works without `--add-arch`.
-- The build checks the architecture, the OpenSSH version string in the
-  binaries, and the linked libraries, then writes `SHA256SUMS.txt`.
+- The build checks the architecture, the OpenSSH version string, the
+  security-key key types and the linked libraries, then writes
+  `SHA256SUMS.txt`.
+
+## Why use this instead of Dropbear
+
+GL firmware ships Dropbear, and for many people that is enough. Dropbear
+already does key logins, port forwarding, SFTP (install GL's
+`openssh-sftp-server`; Dropbear runs `/usr/libexec/sftp-server`) and
+security-key (`sk-*`) logins from a token in your laptop. What OpenSSH adds:
+
+- **SSH certificates**: `TrustedUserCAKeys`, `AuthorizedPrincipalsFile`, host
+  certificates. Dropbear has no certificate support. A FIDO2 key signed by your
+  CA gives a short-lived certificate whose private key never leaves the token.
+- **Policy**: `Match` blocks, `AllowUsers`/`AllowGroups`, `PerSourcePenalties`,
+  `PubkeyAuthOptions verify-required` (reject security-key logins that skipped
+  the PIN), `sshd_config.d/` drop-ins.
+- **A current release** instead of the version your firmware or feed carries.
+  GL's feed has OpenSSH 9.6p1 (affected by CVE-2025-26466, pre-auth DoS).
+
+### Security keys (FIDO2 / U2F)
+
+The token stays in the client machine. The router only checks the signature,
+and sshd does that (`sk-ssh-ed25519@openssh.com`,
+`sk-ecdsa-sha2-nistp256@openssh.com`):
+
+```bash
+# client
+ssh-keygen -t ed25519-sk -O resident -O verify-required
+# append ~/.ssh/id_ed25519_sk.pub to /root/.ssh/authorized_keys on the router
+```
+
+`ssh-sk-helper` / `libfido2` are not built. A token plugged into the router's
+own USB port can't be used (that matters only if the router is the SSH client).
+
+Optional, in `/etc/ssh/sshd_config`: `PubkeyAuthOptions verify-required`
+makes sshd require a PIN on every security-key login. Ordinary keys are not
+affected.
+
+## Before replacing Dropbear
+
+Read this first, or you can lock yourself out.
+
+- **Keep Dropbear.** Move it to another port and LAN only, and leave it
+  enabled:
+  `uci set dropbear.@dropbear[0].Port=2222; uci set dropbear.@dropbear[0].Interface=lan; uci commit dropbear; /etc/init.d/dropbear restart`.
+  Dropbear is in the firmware image; these packages are not.
+- **Firmware upgrades remove these packages.** Only listed files survive
+  sysupgrade. Add `/etc/ssh/` and `/root/.ssh/` (keys, config) to
+  `/etc/sysupgrade.conf`, keep a copy of the `.ipk` files in a preserved
+  directory, and reinstall after each upgrade. If you disabled Dropbear, you
+  have no SSH after the upgrade until you get in some other way.
+- **Different key file.** sshd reads `/root/.ssh/authorized_keys` (permissions
+  `700` on `.ssh`, `600` on the file). Keys set up for Dropbear are in
+  `/etc/dropbear/authorized_keys`, and sshd ignores them. Copy them over.
+- **Root logins are key-only.** The default `PermitRootLogin prohibit-password`
+  refuses the root password. Copy your keys first. Don't set
+  `PermitRootLogin yes`.
+- **New host key.** sshd generates its own host keys, so clients that knew
+  Dropbear on port 22 will refuse to connect with a host-key-changed error.
+  This breaks scripts and automation until `known_hosts` is updated
+  (`ssh-keygen -R <router>`).
+- **Failsafe mode uses Dropbear.** Failsafe boots the firmware image without
+  your overlay, so these packages and your sshd keys aren't there.
 
 ## Build
 
@@ -43,8 +105,8 @@ GitHub release.
 
 ## Install on the router
 
-Keep a second way in (e.g. Dropbear on another port) open until the new sshd is
-verified.
+Read "Before replacing Dropbear" first. Keep a Dropbear session on another port
+open until the new sshd is verified.
 
 ```bash
 cd /tmp

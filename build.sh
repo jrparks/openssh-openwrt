@@ -52,8 +52,10 @@ cp -r "$ROOT/package/openssh" package/
 ./scripts/feeds install libopenssl zlib
 
 # 3. Configure: only the packages we ship. The SDK selects every package by
-# default; openssh-sk-helper would switch on built-in FIDO support, which
-# needs libfido2 (not in the base feed) and links sshd against it.
+# default; openssh-sk-helper would switch on --with-security-key-builtin, which
+# needs libfido2 (not in the base feed) and links sshd against it. That is
+# only for using a token plugged into the router itself. Server-side checks
+# of security-key (sk-*) logins are on regardless and are verified in step 6.
 cat > .config <<EOF
 # CONFIG_ALL is not set
 # CONFIG_ALL_NONSHARED is not set
@@ -98,6 +100,15 @@ for ipk in *.ipk; do
   if [ -f "$tmp/d/usr/sbin/sshd" ]; then
     grep -aq "$WANT" "$tmp/d/usr/sbin/sshd" || { echo "ERROR: $WANT not in sshd"; fail=1; }
   fi
+  # FIDO2 security-key logins: the key types must be compiled in (configure
+  # without --disable-security-key). sshd-auth does the signature check.
+  for bin in "$tmp"/d/usr/sbin/sshd "$tmp"/d/usr/lib/sshd-auth; do
+    [ -f "$bin" ] || continue
+    for kt in sk-ssh-ed25519@openssh.com sk-ecdsa-sha2-nistp256@openssh.com; do
+      grep -aq "$kt" "$bin" || { echo "ERROR: $kt not in $(basename "$bin")"; fail=1; }
+    done
+    echo "$(basename "$bin"): security-key types OK"
+  done
   # Binaries are sstripped (no section headers), so readelf warns; NEEDED
   # comes from the dynamic segment and is still reliable.
   for bin in "$tmp"/d/usr/sbin/sshd "$tmp"/d/usr/lib/sshd-session "$tmp"/d/usr/lib/sshd-auth \

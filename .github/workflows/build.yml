@@ -63,6 +63,12 @@ jobs:
           (arch \`aarch64_cortex-a53_neon-vfpv4\`), built with the stock OpenWrt
           23.05.5 armsr/armv8 SDK from OpenWrt's current openssh package.
 
+          Security keys: sshd accepts FIDO2 \`sk-ssh-ed25519\` / \`sk-ecdsa\` keys
+          from a token in the client machine. A token plugged into the router
+          itself is not supported (no \`ssh-sk-helper\` / \`libfido2\`).
+
           Verify: \`sha256sum -c SHA256SUMS.txt\`
-          Install: see README.
+          Install: read "Before replacing Dropbear" in the README first. A
+          firmware upgrade removes these packages; keep Dropbear enabled on
+          another port.
           EOF
